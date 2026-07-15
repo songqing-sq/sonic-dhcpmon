@@ -1,0 +1,52 @@
+module(
+    name = "dhcpmon",
+    version = "1.0.0-0",
+)
+
+bazel_dep(name = "rules_cc", version = "0.2.16")
+bazel_dep(name = "bazel_skylib", version = "1.9.0")
+bazel_dep(name = "platforms", version = "1.1.0")
+bazel_dep(name = "sonic-build-infra", version = "0.0.0", repo_name = "sonic_build_infra")
+bazel_dep(name = "rules_distroless", version = "0.0.0", repo_name = "rules_deb")
+bazel_dep(name = "sonic-swss-common", version = "1.0.0")
+bazel_dep(name = "libnl3", version = "3.7.0")
+bazel_dep(name = "libyang3", version = "3.12.2")
+
+apt = use_extension("@rules_deb//apt:extensions.bzl", "apt")
+apt.sources_list(
+    architectures = ["amd64", "arm64"],
+    components = ["main"],
+    suites = [
+        "trixie",
+        "trixie-updates",
+    ],
+    uris = ["https://snapshot.debian.org/archive/debian/20260409T202916Z"],
+)
+apt.sources_list(
+    architectures = ["amd64", "arm64"],
+    components = ["main"],
+    suites = ["trixie-security"],
+    uris = ["https://snapshot.debian.org/archive/debian-security/20260409T182303Z"],
+)
+apt.install(
+    dependency_set = "dhcpmon_deps",
+    packages = [
+        # dev libs dhcpmon links: -levent -lexplain -ljsoncpp -lpcap +
+        # boost thread/system (boost 1.83 on trixie). hiredis/swss come from
+        # the sonic-swss-common module. Dual-arch to avoid sysroot pollution.
+        "libevent-dev:amd64",
+        "libevent-dev:arm64",
+        "libexplain-dev:amd64",
+        "libexplain-dev:arm64",
+        "libjsoncpp-dev:amd64",
+        "libjsoncpp-dev:arm64",
+        "libpcap0.8-dev:amd64",
+        "libpcap0.8-dev:arm64",
+        "libboost-thread1.83-dev:amd64",
+        "libboost-thread1.83-dev:arm64",
+        "libboost-system1.83-dev:amd64",
+        "libboost-system1.83-dev:arm64",
+    ],
+    suites = ["trixie", "trixie-updates", "trixie-security"],
+)
+use_repo(apt, "dhcpmon_deps")

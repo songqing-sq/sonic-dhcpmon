@@ -1,0 +1,101 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@sonic_build_infra//sonic_deb:sonic_deb.bzl", "sonic_deb")
+
+package(default_visibility = ["//visibility:public"])
+
+VERSION = "1.0.0-0"
+
+# src/subdir.mk: -O3 -g3 -Wall -fmessage-length=0; debian/rules adds -std=gnu11.
+COPTS = [
+    "-O3",
+    "-g3",
+    "-Wall",
+    "-fmessage-length=0",
+    "-std=gnu11",
+]
+
+# objects.mk LIBS are satisfied via cc_import deps below (linked by full .so
+# path), not -l flags — same approach as the lm-sensors migration. rules_
+# distroless does not wire up sibling/transitive .so deps of the cc_imports,
+# so allow-shlib-undefined lets ld skip those; they resolve at runtime inside
+# the image (which dpkg-installs the full runtime closure). hiredis/pthread/
+# uuid come transitively from libswsscommon.
+LINKOPTS = [
+    "-Wl,--allow-shlib-undefined",
+]
+
+# src/subdir.mk C_SRCS (full list).
+cc_binary(
+    name = "dhcpmon",
+    srcs = [
+        "src/dhcp_check_profile.h",
+        "src/dhcp_check_profile_relay.cpp",
+        "src/dhcp_device.cpp",
+        "src/dhcp_device.h",
+        "src/dhcp_devman.cpp",
+        "src/dhcp_devman.h",
+        "src/dhcp_mon.cpp",
+        "src/dhcp_mon.h",
+        "src/event_mgr.cpp",
+        "src/event_mgr.h",
+        "src/health_check.cpp",
+        "src/health_check.h",
+        "src/main.cpp",
+        "src/packet_handler.cpp",
+        "src/packet_handler.h",
+        "src/sock_mgr.cpp",
+        "src/sock_mgr.h",
+        "src/util.cpp",
+        "src/util.h",
+    ],
+    copts = COPTS,
+    dynamic_deps = [
+        "@sonic-swss-common//:swsscommon_shared",
+        "@libnl3//:libnl_3_shared",
+        "@libnl3//:libnl_nf_3_shared",
+        "@libnl3//:libnl_route_3_shared",
+        "@libyang3//:yang_shared",
+    ],
+    includes = ["src"],
+    linkopts = LINKOPTS,
+    deps = [
+        "@sonic-swss-common//:swsscommon",
+        "@dhcpmon_deps//libevent-dev:libevent",
+        "@dhcpmon_deps//libexplain-dev:libexplain",
+        "@dhcpmon_deps//libjsoncpp-dev:libjsoncpp",
+        "@dhcpmon_deps//libpcap0.8-dev:libpcap0.8",
+        "@dhcpmon_deps//libboost-thread1.83-dev:boost_thread",
+        "@dhcpmon_deps//libboost-system1.83-dev:boost_system",
+    ],
+)
+
+# rules/dhcpmon.mk: SONIC_DPKG_DEBS (dpkg-buildpackage). debian/Makefile install
+# target moves the binary to /usr/sbin. Depends is ${shlibs:Depends} in Make;
+# see migration doc for the resolved runtime deps.
+sonic_deb(
+    name = "sonic-dhcpmon_{}.deb".format(VERSION),
+    package = "sonic-dhcpmon",
+    version = VERSION,
+    content = {
+        "/usr/sbin:*:0755": [":dhcpmon"],
+    },
+    # sonic_deb doesn't run dpkg-shlibdeps; mirror Make's resolved Depends
+    # (dpkg-deb -f target/debs/trixie/sonic-dhcpmon...) verbatim.
+    depends = [
+        "libc6 (>= 2.38)",
+        "libevent-2.1-7t64 (>= 2.1.8-stable)",
+        "libevent-pthreads-2.1-7t64 (>= 2.1.8-stable)",
+        "libexplain51t64 (>= 1.4.D001)",
+        "libgcc-s1 (>= 3.0)",
+        "libjsoncpp26 (>= 1.9.6)",
+        "libpcap0.8t64 (>= 0.9.8)",
+        "libstdc++6 (>= 13.1)",
+        "libswsscommon (>= 1.0.0)",
+    ],
+    maintainer = "Tamer Ahmed <tamer.ahmed@microsoft.com>",
+    description = "SONiC DHCP Monitor",
+    section = "devel",
+    homepage = "https://github.com/Azure/sonic-buildimage",
+    gen_dbg = True,
+    visibility = ["//visibility:public"],
+)
